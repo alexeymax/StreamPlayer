@@ -9,6 +9,7 @@ import android.media.MediaCodec;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
 import android.os.IBinder;
+import android.os.PowerManager;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
@@ -26,10 +27,18 @@ public class MainActivity extends AppCompatActivity {
 
     private StreamPlayerService mStreamPlayerService;
 
+    private PowerManager.WakeLock wakeLock;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
         setContentView(R.layout.activity_main);
+
+
+        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        wakeLock = pm.newWakeLock((PowerManager.PARTIAL_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP | PowerManager.ON_AFTER_RELEASE), "TAG");
+        wakeLock.acquire();
 
         if (mStreamPlayerServiceIntent == null) {
             mStreamPlayerServiceIntent = new Intent(this, StreamPlayerService.class);
@@ -100,6 +109,13 @@ public class MainActivity extends AppCompatActivity {
 
             }
         });
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+
+        wakeLock.release();
     }
 
     ServiceConnection channelPlayingServiceConnection = new ServiceConnection() {
