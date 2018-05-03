@@ -1,9 +1,12 @@
 package com.nini.streamplayer;
 
 import android.app.Notification;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Bitmap;
 import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioTrack;
@@ -17,6 +20,7 @@ import android.os.Binder;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
+import android.support.v7.app.NotificationCompat;
 import android.util.Log;
 
 import java.nio.ByteBuffer;
@@ -26,10 +30,19 @@ import java.nio.ByteBuffer;
  */
 
 public class StreamPlayerService  extends Service implements Handler.Callback {
+
+    public static final String ACTION_NOTIFICATION = "ACTION_NOTIFICATION";
+
     private static final String TAG = "StreamPlayerService";
 
     private static final String ACTION_PLAY_PAUSE = "ACTION_PLAY_PAUSE";
     private static final String ACTION_STOP = "ACTION_STOP";
+
+    public static final String ACTION_PLAY_PAUSE_BUTTON = "com.calmradio.action.play.pause";
+    public static final String ACTION_SKIP_BUTTON = "com.calmradio.action.skip";
+    public static final String ACTION_STOP_BUTTON = "com.calmradio.action.stop";
+    public static final String ACTION_FINISH_BUTTON = "com.calmradio.action.finish";
+
 
 
     private LocalBinder mLocalBinder = new LocalBinder();
@@ -78,7 +91,7 @@ public class StreamPlayerService  extends Service implements Handler.Callback {
 
     @Override
     public IBinder onBind(Intent intent) {
-        Log.i(TAG, "onBind called");
+        Log.i(TAG, "<calm>onBind called");
         isAnyActivityBound = true;
         return mLocalBinder;
     }
@@ -86,7 +99,7 @@ public class StreamPlayerService  extends Service implements Handler.Callback {
     @Override
     public boolean onUnbind(Intent intent) {
         // onUnbind is only called when all clients have disconnected
-        Log.i(TAG, "onUnbind called");
+        Log.i(TAG, "<calm>onUnbind called");
         isAnyActivityBound = false;
 
         return true; // ensures onRebind is called
@@ -94,7 +107,7 @@ public class StreamPlayerService  extends Service implements Handler.Callback {
 
     @Override
     public void onRebind(Intent intent) {
-        Log.i(TAG, "onRebind is called");
+        Log.i(TAG, "<calm>onRebind is called");
         isAnyActivityBound = true;
 
 
@@ -108,18 +121,22 @@ public class StreamPlayerService  extends Service implements Handler.Callback {
     }
 
     private boolean isConnected() {
+        if (connectivityManager == null) {
+            return true;
+        }
+
         NetworkInfo networkInfo = connectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
-        boolean isWifiConn = networkInfo.isConnected();
+        boolean isWifiConn = networkInfo!= null && networkInfo.isConnected();
         networkInfo = connectivityManager.getNetworkInfo(ConnectivityManager.TYPE_MOBILE);
-        boolean isMobileConn = networkInfo.isConnected();
+        boolean isMobileConn = networkInfo!= null && networkInfo.isConnected();
 
         return isWifiConn || isMobileConn;
     }
 
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null) {
-            Log.i(TAG, "onStartCommand called. intent.getType: " + intent.getType());
-            Log.i(TAG, "onStartCommand called. action: " + intent.getAction());
+            Log.i(TAG, "<calm>onStartCommand called. intent.getType: " + intent.getType());
+            Log.i(TAG, "<calm>onStartCommand called. action: " + intent.getAction());
         }
 
         connectivityManager = (ConnectivityManager)
@@ -159,6 +176,8 @@ public class StreamPlayerService  extends Service implements Handler.Callback {
                         addAudioFocusListener();
 
                         play(url);
+
+                        showNotification();
                     }
 
                 } else if (action.equalsIgnoreCase(ACTION_STOP)) {
@@ -170,14 +189,14 @@ public class StreamPlayerService  extends Service implements Handler.Callback {
             } else {
 
                 url = intent.getExtras().getString("url", null);
-                Log.i(TAG, "url in onStartCommand:" + url);
+                Log.i(TAG, "<calm>url in onStartCommand:" + url);
                 stopService = intent.getExtras().getString("stopService", null);
 
                 if (stopService != null) {
                     if (stopService.equalsIgnoreCase("true")) {
-                        Log.i(TAG, "stopService TRUE, SPS stopping itself");
+                        Log.i(TAG, "<calm>stopService TRUE, SPS stopping itself");
                         this.stopSelf();
-                        Log.i(TAG, "11111111111111111111111");
+                        Log.i(TAG, "<calm>11111111111111111111111");
                     }
                 } else {
 
@@ -236,13 +255,13 @@ public class StreamPlayerService  extends Service implements Handler.Callback {
 
 
     public void play(String url) {
-        Log.i(TAG, "burak: url passed to play in SPS: " + url);
+        Log.i(TAG, "<calm>burak: url passed to play in SPS: " + url);
         new PlayMusic().execute(url);
 
     }
 
     public boolean handleMessage(Notification.MessagingStyle.Message msg) {
-        Log.i(TAG, "handleMessage called");
+        Log.i(TAG, "<calm>handleMessage called");
 
         return true;
     }
@@ -253,7 +272,7 @@ public class StreamPlayerService  extends Service implements Handler.Callback {
 
     @Override
     public void onDestroy() {
-		Log.i(TAG, "onDestroy called");
+		Log.i(TAG, "<calm>onDestroy called");
         stop();
 
         if (mAudioManager != null) {
@@ -277,10 +296,57 @@ public class StreamPlayerService  extends Service implements Handler.Callback {
         if (mAudioTrack != null) {
             mAudioTrack.setStereoVolume(vol, vol);
         } else {
-//            Crashlytics.log(1, TAG, "mAudioTrack NULL");
+//            Crashlytics.log(1, TAG, "<calm>mAudioTrack NULL");
         }
     }
 
+
+    private void showNotification() {
+
+        Intent intentGoToApp = new Intent(StreamPlayerService.this, MainActivity.class);
+        intentGoToApp.putExtra("showSplashscreen", false);
+        intentGoToApp.putExtra("isComingBackFromNotif", true);
+        intentGoToApp.setAction(ACTION_NOTIFICATION);
+        intentGoToApp.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        PendingIntent piGoToApp = PendingIntent.getActivity(getApplicationContext(), 0, intentGoToApp, PendingIntent.FLAG_CANCEL_CURRENT);
+
+        NotificationManager mNotificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+
+
+        NotificationCompat.MediaStyle style = new NotificationCompat.MediaStyle();
+
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(StreamPlayerService.this);
+        builder.setPriority(Notification.PRIORITY_MAX);
+        builder.setSmallIcon(R.drawable.common_signin_btn_icon_dark);
+
+        builder.setContentTitle("Title");
+        builder.setContentText("Text");
+        builder.setContentInfo("info");
+        if (!stopPlayback) {
+            builder.addAction(generateAction(R.drawable.ic_pause,
+                    "Pause", ACTION_PLAY_PAUSE_BUTTON));
+            builder.setOngoing(true);
+        } else {
+            builder.addAction(generateAction(R.drawable.ic_play,
+                    "Play", ACTION_PLAY_PAUSE_BUTTON));
+            builder.setOngoing(false);
+        }
+
+        builder.addAction(generateStopAction(R.drawable.ic_close_white_24dp,
+                "Stop", ACTION_STOP_BUTTON));
+
+        builder.setStyle(style
+                .setShowActionsInCompactView(0, 1));
+
+        builder.setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
+        builder.setContentIntent(piGoToApp);
+
+        Notification notification = builder.build();
+        startForeground(10001, notification);
+        mNotificationManager.notify(10001, notification);
+
+//        sendTrackInfoToBluetoothDevice();
+    }
 
     private class PlayThread extends Thread {
 
@@ -294,13 +360,13 @@ public class StreamPlayerService  extends Service implements Handler.Callback {
         // boolean sawOutputEOS = false;
 
         public PlayThread(String url) {
-            Log.i(TAG, "PlayThread url: " + url);
+            Log.i(TAG, "<calm>PlayThread url: " + url);
 
             extractor = new MediaExtractor();
             try {
                 extractor.setDataSource(url);
             } catch (Exception e) {
-                Log.e(TAG, e.getMessage());
+                Log.e(TAG, "<calm>setDataSource exception: " + e.getMessage());
             }
             String mime = null;
             try {
@@ -327,10 +393,14 @@ public class StreamPlayerService  extends Service implements Handler.Callback {
             extractor.selectTrack(0); // <= You must select a track. You will read samples from the media from this track!
         }
 
+
+
         @Override
         public void run() {
             try {
+
                 while (!stopPlayback) {
+
                     if (!isConnected()) {
                         stopPlayback = true;
                         StreamPlayerService.this.stopSelf();
@@ -359,23 +429,23 @@ public class StreamPlayerService  extends Service implements Handler.Callback {
 
                             MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
 
+
                             final int res = codec.dequeueOutputBuffer(info, 2000);
                             if (res >= 0) {
                                 int outputBufIndex = res;
                                 ByteBuffer buf = codecOutputBuffers[outputBufIndex];
 
+
                                 final byte[] chunk = new byte[info.size];
                                 buf.get(chunk);
                                 buf.clear();
 
-                                if (mAudioTrack.getPlayState() == AudioTrack.PLAYSTATE_PLAYING) {
-
-                                }
 
                                 mAudioTrack.play();
                                 if (chunk.length > 0) {
                                     mAudioTrack.write(chunk, 0, chunk.length);
                                 }
+
                                 codec.releaseOutputBuffer(outputBufIndex, false /* render */);
 
 //		                        if ((info.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
@@ -385,7 +455,6 @@ public class StreamPlayerService  extends Service implements Handler.Callback {
                                 codecOutputBuffers = codec.getOutputBuffers();
                             } else if (res == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
                                 final MediaFormat oformat = codec.getOutputFormat();
-                                Log.d(TAG, "Output format has changed to " + oformat);
                                 mAudioTrack.setPlaybackRate(oformat.getInteger(MediaFormat.KEY_SAMPLE_RATE));
                             }
                         }
@@ -393,7 +462,7 @@ public class StreamPlayerService  extends Service implements Handler.Callback {
                 }
             } catch (Exception ex) {
                 if (ex != null) {
-                    Log.e(TAG, ex.getClass().toString());
+                    Log.e(TAG, "<calm>PlayThread run exception:" + ex.getClass().toString());
                 }
             } finally {
                 try {
@@ -419,6 +488,26 @@ public class StreamPlayerService  extends Service implements Handler.Callback {
         }
     }
 
+    private NotificationCompat.Action generateAction(int icon, String title, String intentAction) {
+        Intent intent = new Intent(getApplicationContext(), StreamPlayerService.class);
+        intent.setAction(intentAction);
+        PendingIntent pendingIntent = PendingIntent.getService(getApplicationContext(), 1, intent, 0);
+        return new NotificationCompat.Action.Builder(icon, title, pendingIntent).build();
+    }
+
+    private NotificationCompat.Action generateStopAction(int icon, String title, String intentAction) {
+        Intent intent = new Intent(getApplicationContext(), StreamPlayerService.class);
+        intent.setAction(intentAction);
+//        PendingIntent pendingIntent = PendingIntent.getService(getApplicationContext(), 1, intent, 0);
+        PendingIntent piStopService = PendingIntent.getService(getApplicationContext(), 0, intent, PendingIntent.FLAG_CANCEL_CURRENT);
+        return new NotificationCompat.Action.Builder(icon, title, piStopService).build();
+    }
+
+    public void removeNotification(NotificationManager mNotificationManager) {
+        stopForeground(false);
+        mNotificationManager.cancelAll();
+    }
+
     boolean isSongLoading = false;
 
     class PlayMusic extends AsyncTask<String, Void, Void> {
@@ -427,7 +516,7 @@ public class StreamPlayerService  extends Service implements Handler.Callback {
         protected void onPreExecute() {
             super.onPreExecute();
             isSongLoading = true;
-            Log.d(TAG, "onPreExecute: loading PlayBack");
+            Log.d(TAG, "<calm>onPreExecute: loading PlayBack");
 
         }
 
@@ -435,7 +524,7 @@ public class StreamPlayerService  extends Service implements Handler.Callback {
         protected void onPostExecute(Void aVoid) {
             super.onPostExecute(aVoid);
             isSongLoading = false;
-            Log.d(TAG, "onPreExecute: Playing PlayBack");
+            Log.d(TAG, "<calm>onPreExecute: Playing PlayBack");
         }
 
         @Override
