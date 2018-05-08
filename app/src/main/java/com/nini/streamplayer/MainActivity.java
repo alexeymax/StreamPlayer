@@ -109,6 +109,19 @@ public class MainActivity extends AppCompatActivity {
 
             }
         });
+
+        findViewById(R.id.update_title).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        mStreamPlayerService.updateNotification("new title", "new text");
+                    }
+                }).start();
+
+            }
+        });
     }
 
     @Override

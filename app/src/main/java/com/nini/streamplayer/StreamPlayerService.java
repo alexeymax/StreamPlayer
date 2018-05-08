@@ -1,12 +1,16 @@
 package com.nini.streamplayer;
 
+import android.annotation.TargetApi;
 import android.app.Notification;
+import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Color;
 import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioTrack;
@@ -17,12 +21,19 @@ import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.os.AsyncTask;
 import android.os.Binder;
+import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
+import android.support.annotation.RequiresApi;
 import android.support.v7.app.NotificationCompat;
 import android.util.Log;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.nio.ByteBuffer;
 
 /**
@@ -30,6 +41,14 @@ import java.nio.ByteBuffer;
  */
 
 public class StreamPlayerService  extends Service implements Handler.Callback {
+
+    public interface PlayThreadListener {
+        void onEndOfStrream();
+        void onStartReadSample();
+        void onEndReadSample();
+        void onError();
+    }
+
 
     public static final String ACTION_NOTIFICATION = "ACTION_NOTIFICATION";
 
@@ -42,6 +61,10 @@ public class StreamPlayerService  extends Service implements Handler.Callback {
     public static final String ACTION_SKIP_BUTTON = "com.calmradio.action.skip";
     public static final String ACTION_STOP_BUTTON = "com.calmradio.action.stop";
     public static final String ACTION_FINISH_BUTTON = "com.calmradio.action.finish";
+
+
+    public static final String ANDROID_CHANNEL_ID = "com.chikeandroid.tutsplustalerts.ANDROID";
+    public static final String ANDROID_CHANNEL_NAME = "ANDROID CHANNEL";
 
 
 
@@ -64,6 +87,21 @@ public class StreamPlayerService  extends Service implements Handler.Callback {
     private AudioManager.OnAudioFocusChangeListener onAudioFocusChangeListener;
 
     private ConnectivityManager connectivityManager;
+
+    private String title;
+    private String text;
+    private Bitmap notificationIcon;
+
+    public PlayThreadListener getListener() {
+        return listener;
+    }
+
+    public void setListener(PlayThreadListener listener) {
+        this.listener = listener;
+    }
+
+    private PlayThreadListener listener;
+
 
     public static void actionPlayPause(Context cxt) {
         Intent i = new Intent(cxt, StreamPlayerService.class);
@@ -170,6 +208,7 @@ public class StreamPlayerService  extends Service implements Handler.Callback {
 
                     if (!stopPlayback) {
                         stop();
+                        updateNotification();
                     } else {
                         stopPlayback = false;
                         flag = true;
@@ -182,6 +221,7 @@ public class StreamPlayerService  extends Service implements Handler.Callback {
 
                 } else if (action.equalsIgnoreCase(ACTION_STOP)) {
                     stopForeground(true);
+                    removeNotification();
                     this.stopSelf();
                     stop();
                 }
@@ -300,8 +340,101 @@ public class StreamPlayerService  extends Service implements Handler.Callback {
         }
     }
 
+    public void removeNotification() {
+        NotificationManager mNotificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+
+        stopForeground(false);
+        mNotificationManager.cancelAll();
+    }
+
+    public void updateNotification(String title, String text) {
+        showNotification(false, title, text, notificationIcon);
+    }
+
+    public void updateNotification() {
+        showNotification(false, title, text, notificationIcon);
+    }
 
     private void showNotification() {
+        showNotification(true, "", "", notificationIcon);
+    }
+
+    private void updateNotificatioIcon(String url) {
+        new GetIconAsyncTask(this, url).execute();
+    }
+
+    public class GetIconAsyncTask extends AsyncTask<String, Void, Bitmap> {
+
+        private Context mContext;
+        private String title, message, imageUrl;
+
+        public GetIconAsyncTask(Context context, String imageUrl) {
+            super();
+            this.mContext = context;
+            this.imageUrl = imageUrl;
+        }
+
+        @Override
+        protected Bitmap doInBackground(String... params) {
+
+            InputStream in;
+            try {
+                URL url = new URL(this.imageUrl);
+                HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+                connection.setDoInput(true);
+                connection.connect();
+                in = connection.getInputStream();
+                Bitmap myBitmap = BitmapFactory.decodeStream(in);
+                return myBitmap;
+            } catch (MalformedURLException e) {
+                e.printStackTrace();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            return null;
+        }
+
+        @TargetApi(Build.VERSION_CODES.JELLY_BEAN)
+        @Override
+        protected void onPostExecute(Bitmap result) {
+            super.onPostExecute(result);
+
+            notificationIcon  = result;
+            updateNotification();
+        }
+    }
+
+
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    public void createChannels() {
+        Log.i(TAG, "<calm> createChannels");
+
+
+        NotificationManager mNotificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+
+        // create android channel
+        NotificationChannel androidChannel = new NotificationChannel(ANDROID_CHANNEL_ID,
+                ANDROID_CHANNEL_NAME, NotificationManager.IMPORTANCE_DEFAULT);
+        // Sets whether notifications posted to this channel should display notification lights
+        androidChannel.enableLights(true);
+        // Sets whether notification posted to this channel should vibrate.
+        androidChannel.setVibrationPattern(new long[]{ 0 });
+        androidChannel.enableVibration(false);
+        // Sets the notification light color for notifications posted to this channel
+        androidChannel.setLightColor(Color.GREEN);
+        // Sets whether notifications posted to this channel appear on the lockscreen or not
+        androidChannel.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
+
+        mNotificationManager.createNotificationChannel(androidChannel);
+    }
+
+
+    private void showNotification(boolean startForeground, String title, String text, Bitmap icon) {
+        this.title = title;
+        this.text = text;
+
+
+        Log.i(TAG, "<calm>burak: url passed to play in SPS: " + url);
 
         Intent intentGoToApp = new Intent(StreamPlayerService.this, MainActivity.class);
         intentGoToApp.putExtra("showSplashscreen", false);
@@ -313,39 +446,49 @@ public class StreamPlayerService  extends Service implements Handler.Callback {
         NotificationManager mNotificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
 
 
-        NotificationCompat.MediaStyle style = new NotificationCompat.MediaStyle();
+        Notification.MediaStyle style = new Notification.MediaStyle();
 
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(StreamPlayerService.this);
+        Notification.Builder builder = new Notification.Builder(StreamPlayerService.this);
         builder.setPriority(Notification.PRIORITY_MAX);
-        builder.setSmallIcon(R.drawable.common_signin_btn_icon_dark);
+        builder.setSmallIcon(R.drawable.small);
 
-        builder.setContentTitle("Title");
-        builder.setContentText("Text");
-        builder.setContentInfo("info");
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            if (startForeground) {
+                createChannels();
+            }
+
+            builder.setChannelId(ANDROID_CHANNEL_ID);
+        }
+
+        builder.setContentTitle(title);
+        builder.setContentText(text);
         if (!stopPlayback) {
             builder.addAction(generateAction(R.drawable.ic_pause,
-                    "Pause", ACTION_PLAY_PAUSE_BUTTON));
+                    "Pause", ACTION_PLAY_PAUSE));
             builder.setOngoing(true);
         } else {
             builder.addAction(generateAction(R.drawable.ic_play,
-                    "Play", ACTION_PLAY_PAUSE_BUTTON));
+                    "Play", ACTION_PLAY_PAUSE));
             builder.setOngoing(false);
         }
 
-        builder.addAction(generateStopAction(R.drawable.ic_close_white_24dp,
-                "Stop", ACTION_STOP_BUTTON));
+        builder.addAction(generateStopAction(R.drawable.ic_close_black_24dp,
+                "Stop", ACTION_STOP));
 
         builder.setStyle(style
                 .setShowActionsInCompactView(0, 1));
 
         builder.setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
         builder.setContentIntent(piGoToApp);
+        builder.setVibrate(null);
+
+
 
         Notification notification = builder.build();
-        startForeground(10001, notification);
+        if (startForeground) {
+            startForeground(10001, notification);
+        }
         mNotificationManager.notify(10001, notification);
-
-//        sendTrackInfoToBluetoothDevice();
     }
 
     private class PlayThread extends Thread {
@@ -407,13 +550,30 @@ public class StreamPlayerService  extends Service implements Handler.Callback {
                     } else {
                         int inputBufIndex = codec.dequeueInputBuffer(2000);
                         if (inputBufIndex >= 0) {
+
+                            if (listener != null) {
+                                Log.d(TAG, "onStartReadSample ");
+                                listener.onStartReadSample();
+                            }
+
                             ByteBuffer dstBuf = codecInputBuffers[inputBufIndex];
+
+                            if (listener != null) {
+                                Log.d(TAG, "onStartReadSample ");
+                                listener.onEndReadSample();
+                            }
+
 
                             int sampleSize = extractor.readSampleData(dstBuf, 0);
                             long presentationTimeUs = 0;
                             if (sampleSize < 0) {
                                 sawInputEOS = true;
                                 sampleSize = 0;
+
+                                if(listener != null) {
+                                    Log.d(TAG, "onEndOfStrream ");
+                                    listener.onEndOfStrream();
+                                }
                             } else {
                                 presentationTimeUs = extractor.getSampleTime();
                             }
@@ -488,19 +648,19 @@ public class StreamPlayerService  extends Service implements Handler.Callback {
         }
     }
 
-    private NotificationCompat.Action generateAction(int icon, String title, String intentAction) {
+    private Notification.Action generateAction(int icon, String title, String intentAction) {
         Intent intent = new Intent(getApplicationContext(), StreamPlayerService.class);
         intent.setAction(intentAction);
         PendingIntent pendingIntent = PendingIntent.getService(getApplicationContext(), 1, intent, 0);
-        return new NotificationCompat.Action.Builder(icon, title, pendingIntent).build();
+        return new Notification.Action.Builder(icon, title, pendingIntent).build();
     }
 
-    private NotificationCompat.Action generateStopAction(int icon, String title, String intentAction) {
+    private Notification.Action generateStopAction(int icon, String title, String intentAction) {
         Intent intent = new Intent(getApplicationContext(), StreamPlayerService.class);
         intent.setAction(intentAction);
 //        PendingIntent pendingIntent = PendingIntent.getService(getApplicationContext(), 1, intent, 0);
         PendingIntent piStopService = PendingIntent.getService(getApplicationContext(), 0, intent, PendingIntent.FLAG_CANCEL_CURRENT);
-        return new NotificationCompat.Action.Builder(icon, title, piStopService).build();
+        return new Notification.Action.Builder(icon, title, piStopService).build();
     }
 
     public void removeNotification(NotificationManager mNotificationManager) {

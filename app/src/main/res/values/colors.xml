@@ -3,4 +3,13 @@
     <color name="colorPrimary">#3F51B5</color>
     <color name="colorPrimaryDark">#303F9F</color>
     <color name="colorAccent">#FF4081</color>
+    <color name="btn_login_color">#20ABE2</color>
+    <color name="login_btn_textcolor">@android:color/white</color>
+    <color name="login_layout_textcolor">@android:color/black</color>
+    <color name="login_background">#F7F7F7</color>
+    <color name="login_edittext_border">#E9E9EC</color>
+    <color name="transparent">#00000000</color>
+    <color name="colorGrayLight">#9f9f9f</color>
+    <color name="selected_channel_nowPlaying_blue_color">#2300FB</color>
+
 </resources>
